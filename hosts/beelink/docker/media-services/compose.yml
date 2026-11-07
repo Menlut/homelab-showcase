@@ -1,0 +1,7 @@
+name: media-services
+include:
+  - ./aquisition/docker-compose.yml
+  - ./optimized-media/docker-compose.yml
+  - ./4k-media/docker-compose.yml
+  - ./processing/docker-compose.yml
+  - ./frontend/docker-compose.yml

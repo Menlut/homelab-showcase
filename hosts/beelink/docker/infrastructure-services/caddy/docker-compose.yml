@@ -1,0 +1,48 @@
+services:
+
+  ###########################################################
+  # Caddy
+  ###########################################################
+  # Host networking is intentional: Caddy proxies to localhost-only Beelink services.
+  caddy:
+    image: ghcr.io/example-user/caddy-cloudflare:2.11.9-cf0.2.4-r1
+    container_name: caddy
+    restart: unless-stopped
+    environment:
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN}
+    network_mode: host
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy-data:/data
+      - ./caddy-config:/config
+    healthcheck:
+      test:
+        - CMD
+        - caddy
+        - validate
+        - --config
+        - /etc/caddy/Caddyfile
+        - --adapter
+        - caddyfile
+      interval: 1m
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 64M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^\d+\.\d+\.\d+-cf\d+\.\d+\.\d+(-r\d+)?$$
+      wud.watch.digest: 'true'
+      wud.link.changelog: https://github.com/caddyserver/caddy/releases/tag/v$${major}.$${minor}.$${patch}
+      wud.trigger.include: dockercompose.local,telegram.local
+

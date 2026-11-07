@@ -1,0 +1,199 @@
+services:
+
+  ###########################################################
+  # Gluetun Sweden
+  ###########################################################
+  # Exit node uses Gluetun network namespace; keep VPN routing.
+  gluetun-sweden:
+    image: qmcgaw/gluetun:v3.41.3
+    container_name: gluetun-sweden
+    restart: unless-stopped
+    environment:
+      VPN_SERVICE_PROVIDER: protonvpn
+      VPN_TYPE: wireguard
+      WIREGUARD_PRIVATE_KEY: ${WIREGUARD_KEY}
+      SERVER_COUNTRIES: ${VPN_COUNTRY}
+      SERVER_HOSTNAMES: ${VPN_SERVER_HOSTNAMES}
+      STREAM_ONLY: 'on'
+      VPN_PORT_FORWARDING: 'on'
+      TZ: ${TZ}
+      FIREWALL_INPUT_PORTS: '3000'
+      HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE: '{"auth":"none"}'
+    ports:
+      - 127.0.0.1:${GLUETUN_WEBUI_PORT}:3000/tcp
+    volumes:
+      - ./sweden-gluetundata:/gluetun
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      net.ipv4.ip_forward: '1'
+      net.ipv6.conf.all.forwarding: '1'
+      net.ipv4.conf.all.src_valid_mark: '1'
+    healthcheck:
+      test:
+        - CMD
+        - /gluetun-entrypoint
+        - healthcheck
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^v\d+\.\d+\.\d+$$
+      wud.link.template: https://github.com/passteque/gluetun/releases/tag/v$${major}.$${minor}.$${patch}
+      wud.trigger.include: dockercompose.local,telegram.local
+
+  ###########################################################
+  # Gluetun Web Ui Sweden
+  ###########################################################
+  gluetun-web-ui-sweden:
+    image: scuzza/gluetun-webui:main
+    container_name: gluetun-web-ui-sweden
+    restart: unless-stopped
+    environment:
+      GLUETUN_CONTROL_URL: http://127.0.0.1:8000
+      TRUST_PROXY: 'true'
+    network_mode: service:gluetun-sweden
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    depends_on:
+      gluetun-sweden:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^main$$
+      wud.watch.digest: 'true'
+      wud.link.template: https://github.com/Sir-Scuzza/gluetun-webui/commits/main
+      wud.trigger.include: dockercompose.local,telegram.local
+
+  ###########################################################
+  # Exit Node Sweden
+  ###########################################################
+  exit-node-sweden:
+    image: tailscale/tailscale:v1.104.4
+    container_name: exit-node-sweden
+    restart: unless-stopped
+    environment:
+      TS_AUTHKEY: ${TAILSCALE_AUTHKEY}
+      TS_HOSTNAME: ${TAILSCALE_HOSTNAME}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: 'false'
+      TS_ACCEPT_DNS: 'false'
+      TS_EXTRA_ARGS: --advertise-exit-node
+      TS_TAILSCALED_EXTRA_ARGS: --port=${TAILSCALE_PORT}
+      TS_DEBUG_FIREWALL_MODE: auto
+    network_mode: service:gluetun-sweden
+    volumes:
+      - ./sweden-tailscaledata:/var/lib/tailscale
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      gluetun-sweden:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - tailscale
+        - status
+        - --peers=false
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^v\d+\.\d+\.\d+$$
+      wud.link.template: https://github.com/tailscale/tailscale/releases/tag/v$${major}.$${minor}.$${patch}
+      wud.trigger.include: dockercompose.local,telegram.local
+
+  ###########################################################
+  # Tailscale Route Fix Sweden
+  ###########################################################
+  tailscale-route-fix-sweden:
+    image: nicolaka/netshoot:v0.16
+    container_name: tailscale-route-fix-sweden
+    restart: unless-stopped
+    command:
+      - /bin/sh
+      - /usr/local/bin/tailscale-route-fix.sh
+    environment:
+      EXPECTED_COUNTRY: ${VPN_COUNTRY}
+    network_mode: service:gluetun-sweden
+    volumes:
+      - ./tailscale-route-fix.sh:/usr/local/bin/tailscale-route-fix.sh:ro
+    cap_add:
+      - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      exit-node-sweden:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -fsS http://127.0.0.1:8000/v1/vpn/status | grep -q '"status":"running"' && curl -fsS http://127.0.0.1:8000/v1/publicip/ip
+          | grep -q "\"country\":\"$${EXPECTED_COUNTRY}\"" && ip link show tun0 >/dev/null 2>&1 && ip route show table
+          51820 2>/dev/null | grep -q "default dev tun0" && ip route show table 52 2>/dev/null | grep -q tailscale0
+          && ip rule show | grep -q "to 100.64.0.0/10 lookup 52" && [ "$$(iptables -L FORWARD -n --line-numbers 2>/dev/null
+          | awk '$$1 == "1" {print $$2; exit}')" = "TS_GLUE_FORWARD" ] && iptables -C TS_GLUE_FORWARD -i tailscale0
+          -o tun0 -j ACCEPT && iptables -C TS_GLUE_FORWARD -i tun0 -o tailscale0 -m conntrack --ctstate RELATED,ESTABLISHED
+          -j ACCEPT && iptables -C TS_GLUE_FORWARD -i tailscale0 -j DROP && [ "$$(iptables -t nat -L POSTROUTING -n
+          --line-numbers 2>/dev/null | awk '$$1 == "1" {print $$2; exit}')" = "TS_GLUE_POSTROUTING" ] && iptables
+          -t nat -C TS_GLUE_POSTROUTING -s 100.64.0.0/10 -o tun0 -j MASQUERADE
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^v\d+\.\d+$$
+      wud.tag.transform: ^v(\d+)\.(\d+)$$ => $$1.$$2.0
+      wud.link.template: https://github.com/nicolaka/netshoot/tree/v$${major}.$${minor}
+      wud.trigger.include: dockercompose.local,telegram.local
+

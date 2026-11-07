@@ -1,0 +1,92 @@
+services:
+
+  ###########################################################
+  # Jellyfin
+  ###########################################################
+  jellyfin:
+    image: linuxserver/jellyfin:12.1ubu2604-ls50
+    container_name: jellyfin
+    restart: unless-stopped
+    profiles:
+      - jelly
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      DOCKER_MODS: linuxserver/mods:jellyfin-opencl-intel
+      TZ: ${TZ}
+    ports:
+      - 127.0.0.1:${JELLYFIN_WEB_PORT}:8096/tcp
+    volumes:
+      - ./jellyfinconfig:/config
+      - ./jellyfincache:/config/cache
+      - ${MEDIA_PATH}:/media
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      - ${VIDEO_GID}
+      - ${RENDER_GID}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl --fail --silent --show-error http://127.0.0.1:8096/health || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          memory: 3g
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^\d+\.\d+ubu2604-ls\d+$$
+      wud.tag.transform: ^(\d+)\.(\d+)ubu2604-ls(\d+)$$ => $$1.$$2.0-$$3
+      wud.watch.digest: 'true'
+      wud.link.template: https://github.com/jellyfin/jellyfin/releases/tag/v$${major}.$${minor}
+      wud.trigger.include: dockercompose.local,telegram.local
+
+  ###########################################################
+  # Seerr
+  ###########################################################
+  seerr:
+    image: ghcr.io/seerr-team/seerr:v3.4.1
+    container_name: seerr
+    restart: unless-stopped
+    init: true
+    environment:
+      TZ: ${TZ}
+      PUID: ${PUID}
+      PGID: ${PGID}
+      LOG_LEVEL: info
+    ports:
+      - 127.0.0.1:${SEERR_WEB_PORT}:5055/tcp
+    volumes:
+      - ./seerrconfig:/app/config
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - node -e "require(\"http\").get(\"http://127.0.0.1:5055/\",r=>process.exit(r.statusCode<500?0:1)).on(\"error\",()=>process.exit(1))"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^v\d+\.\d+\.\d+$$
+      wud.link.template: https://github.com/seerr-team/seerr/releases/tag/v$${major}.$${minor}.$${patch}
+      wud.trigger.include: dockercompose.local,telegram.local
+

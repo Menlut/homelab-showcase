@@ -1,0 +1,85 @@
+services:
+
+  ###########################################################
+  # Stirling Pdf
+  ###########################################################
+  stirling-pdf:
+    image: stirlingtools/stirling-pdf:3.3.0-fat
+    container_name: stirling-pdf
+    restart: unless-stopped
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      UMASK: '022'
+      TZ: ${TZ}
+      SYSTEM_FRONTENDURL: ${STIRLING_PDF_URL}
+      SYSTEM_BACKENDURL: ${STIRLING_PDF_URL}
+      SYSTEM_CORSALLOWEDORIGINS: ${STIRLING_PDF_URL},http://tauri.localhost,tauri://localhost
+      SECURITY_ENABLELOGIN: 'true'
+      SECURITY_LOGINMETHOD: oauth2
+      SECURITY_SSOAUTOLOGIN: 'true'
+      SECURITY_OAUTH2_ENABLED: 'true'
+      SECURITY_OAUTH2_PROVIDER: authentik
+      SECURITY_OAUTH2_ISSUER: ${STIRLING_OIDC_ISSUER}
+      SECURITY_OAUTH2_CLIENTID: ${STIRLING_OIDC_CLIENT_ID}
+      SECURITY_OAUTH2_CLIENTSECRET: ${STIRLING_OIDC_CLIENT_SECRET}
+      SECURITY_OAUTH2_SCOPES: openid, profile, email
+      SECURITY_OAUTH2_USEASUSERNAME: email
+      SECURITY_OAUTH2_AUTOCREATEUSER: 'true'
+      SECURITY_OAUTH2_BLOCKREGISTRATION: 'false'
+      STORAGE_ENABLED: 'false'
+      STORAGE_SHARING_ENABLED: 'false'
+      STORAGE_SHARING_LINKENABLED: 'false'
+      STORAGE_SHARING_EMAILENABLED: 'false'
+      AIENGINE_ENABLED: 'false'
+      FORMDETECTION_ENABLED: 'true'
+      SYSTEM_DEFAULTLOCALE: ${STIRLING_DEFAULT_LOCALE}
+      SYSTEM_FILEUPLOADLIMIT: ${STIRLING_FILE_UPLOAD_LIMIT}
+      PROCESS_EXECUTOR_AUTO_UNO_SERVER: 'true'
+      PROCESS_EXECUTOR_SESSION_LIMIT_LIBRE_OFFICE_SESSION_LIMIT: '2'
+      SYSTEM_ENABLEURLTOPDF: 'true'
+      SYSTEM_ENABLEANALYTICS: 'false'
+      TOOLRECOMMENDATIONS_ENABLED: 'false'
+      METRICS_ENABLED: 'false'
+      SYSTEM_GOOGLEVISIBILITY: 'false'
+    ports:
+      - 127.0.0.1:${STIRLING_PDF_PORT}:8080
+    networks:
+      - stirling-network
+    volumes:
+      - ./stirling-configs:/configs
+      - ./stirling-logs:/logs
+      - ./stirling-tessdata:/usr/share/tessdata
+      - ./stirling-customFiles:/customFiles
+      - ./rar/rar-bin:/usr/local/bin/rar:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - |
+          curl -fsS http://127.0.0.1:8080$${SYSTEM_ROOTURIPATH:-}/api/v1/info/status | grep -q 'UP' || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          memory: 6g
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^\d+\.\d+\.\d+-fat$$
+      wud.watch.digest: 'true'
+      wud.link.template: https://github.com/Stirling-Tools/Stirling-PDF/releases/tag/v$${major}.$${minor}.$${patch}
+      wud.trigger.include: dockercompose.local,telegram.local
+
+###########################################################
+# Shared Configuration
+###########################################################
+networks:
+  stirling-network:
+    driver: bridge

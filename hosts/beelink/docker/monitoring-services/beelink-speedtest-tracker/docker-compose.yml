@@ -1,0 +1,55 @@
+services:
+
+  ###########################################################
+  # Beelink Speedtest Tracker
+  ###########################################################
+  beelink-speedtest-tracker:
+    image: lscr.io/linuxserver/speedtest-tracker:v1.15.1-ls179
+    container_name: beelink-speedtest-tracker
+    restart: unless-stopped
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+      APP_KEY: ${APP_KEY}
+      APP_URL: ${URL}
+      ASSET_URL: ${URL}
+      APP_TIMEZONE: ${TZ}
+      DISPLAY_TIMEZONE: ${TZ}
+      DB_CONNECTION: sqlite
+      # Speedtest configuration
+      SPEEDTEST_SCHEDULE: "7 * * * *"
+      SPEEDTEST_SERVERS: "14237"
+      PRUNE_RESULTS_OLDER_THAN: "30"
+      PUBLIC_DASHBOARD: "true"
+    ports:
+      - "127.0.0.1:61211:80"
+    volumes:
+      - ./beelink-speedtest-tracker-config:/config
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -fSs http://127.0.0.1:80/api/healthcheck || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      wud.watch: "true"
+      wud.tag.include: '^v\d+\.\d+\.\d+-ls\d+$$'
+      wud.tag.transform: '^v(\d+\.\d+\.\d+)-ls(\d+)$$ => $$1-$$2'
+      wud.link.template: "https://github.com/alexjustesen/speedtest-tracker/releases/tag/v$${major}.$${minor}.$${patch}"
+      wud.trigger.include: "dockercompose.local,telegram.local"

@@ -1,0 +1,61 @@
+services:
+
+  ###########################################################
+  # VS Code Server
+  ###########################################################
+  vscode:
+    image: lscr.io/linuxserver/vscode:1.144.1
+    container_name: vscode-server
+    restart: unless-stopped
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+      SELKIES_ENABLE_CLIPBOARD: 'true'
+      SELKIES_CLIPBOARD_SEAMLESS: 'true'
+      SELKIES_ENABLE_BINARY_CLIPBOARD: 'false'
+      SELKIES_UI_SIDEBAR_SHOW_CLIPBOARD: 'true'
+      SELKIES_FILE_TRANSFERS: upload,download
+      SELKIES_UI_SIDEBAR_SHOW_FILES: 'true'
+      SELKIES_ENABLE_SHARING: 'false'
+      SELKIES_ENABLE_COLLAB: 'false'
+      SELKIES_ENABLE_SHARED: 'false'
+      SELKIES_UI_SHOW_SIDEBAR: 'true'
+      SELKIES_UI_SIDEBAR_SHOW_FULLSCREEN: 'true'
+      SELKIES_UI_SIDEBAR_SHOW_SHORTCUTS: 'true'
+      SELKIES_UI_SIDEBAR_SHOW_STATS: 'true'
+    ports:
+      - 127.0.0.1:3050:3000
+    volumes:
+      - ./config:/config
+      - ./workspace:/workspace
+    devices:
+      - /dev/dri:/dev/dri
+    cap_add:
+      - IPC_LOCK
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -fsS http://127.0.0.1:3000/ >/dev/null || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^\d+\.\d+\.\d+$$
+      wud.link.template: https://github.com/microsoft/vscode/releases/tag/$${major}.$${minor}.$${patch}
+      wud.trigger.include: dockercompose.local,telegram.local
+    shm_size: 1gb
+

@@ -1,0 +1,311 @@
+services:
+
+  ###########################################################
+  # PostgreSQL
+  ###########################################################
+  postgres:
+    image: postgres:17.11
+    container_name: wardrobe-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    networks:
+      - wardrowbe-network
+      - database-admin-network
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^17\.\d+$$
+      wud.tag.transform: ^(\d+)\.(\d+)$$ => $$1.$$2.0
+      wud.link.template: https://www.postgresql.org/docs/release/$${major}.$${minor}/
+      wud.trigger.include: dockercompose.local,telegram.local
+
+  ###########################################################
+  # Redis
+  ###########################################################
+  redis:
+    image: redis:7.4.12
+    container_name: wardrobe-redis
+    restart: unless-stopped
+    networks:
+      - wardrowbe-network
+    volumes:
+      - ./redis_data:/data
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 64M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^7\.\d+\.\d+$$
+      wud.link.template: https://github.com/redis/redis/releases/tag/$${major}.$${minor}.$${patch}
+      wud.trigger.include: dockercompose.local,telegram.local
+
+  ###########################################################
+  # Database Migration
+  ###########################################################
+  # One-shot schema migration: successful exit 0 is the completion signal.
+  migrate:
+    image: ghcr.io/anyesh/wardrowbe:backend-1.12.0
+    container_name: wardrobe-migrate
+    restart: 'no'
+    command:
+      - alembic
+      - upgrade
+      - head
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    networks:
+      - wardrowbe-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'false'
+
+  ###########################################################
+  # Wardrobe Backend
+  ###########################################################
+  backend:
+    image: ghcr.io/anyesh/wardrowbe:backend-1.12.0
+    container_name: wardrobe-backend
+    restart: unless-stopped
+    environment:
+      DEBUG: ${DEBUG}
+      PUID: ${PUID}
+      PGID: ${PGID}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      STORAGE_PATH: /data/wardrobe
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
+      AUTH_TRUST_HEADER: ${AUTH_TRUST_HEADER}
+      AI_BASE_URL: ${AI_BASE_URL}
+      AI_VISION_MODEL: ${AI_VISION_MODEL}
+      AI_TEXT_MODEL: ${AI_TEXT_MODEL}
+      AI_TIMEOUT: ${AI_TIMEOUT}
+      AI_MAX_RETRIES: ${AI_MAX_RETRIES}
+      AI_TAGGING_CONCURRENCY: ${AI_TAGGING_CONCURRENCY:-1}
+      AI_INTERNAL_ENABLED: ${AI_INTERNAL_ENABLED}
+      AI_VISION_ENABLED: ${AI_VISION_ENABLED}
+      AI_TEXT_ENABLED: ${AI_TEXT_ENABLED}
+      AI_REASONING_EFFORT: ${AI_REASONING_EFFORT:-none}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    networks:
+      - wardrowbe-network
+      - ai-services-network
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ./wardrobe_data:/data/wardrobe
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8000/api/v1/health
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^backend-\d+\.\d+\.\d+$$
+      wud.tag.transform: ^backend-(\d+\.\d+\.\d+)$$ => $$1
+      wud.link.template: https://github.com/Anyesh/wardrowbe/releases/tag/v$${major}.$${minor}.$${patch}
+      wud.trigger.include: dockercompose.local,telegram.local
+
+  ###########################################################
+  # Wardrobe Worker
+  ###########################################################
+  worker:
+    image: ghcr.io/anyesh/wardrowbe:backend-1.12.0
+    container_name: wardrobe-worker
+    restart: unless-stopped
+    command:
+      - arq
+      - app.workers.worker.WorkerSettings
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_PATH: /data/wardrobe
+      AI_BASE_URL: ${AI_BASE_URL}
+      AI_VISION_MODEL: ${AI_VISION_MODEL}
+      AI_TEXT_MODEL: ${AI_TEXT_MODEL}
+      AI_TIMEOUT: ${AI_TIMEOUT}
+      AI_MAX_RETRIES: ${AI_MAX_RETRIES}
+      AI_TAGGING_CONCURRENCY: ${AI_TAGGING_CONCURRENCY:-1}
+      AI_INTERNAL_ENABLED: ${AI_INTERNAL_ENABLED}
+      AI_VISION_ENABLED: ${AI_VISION_ENABLED}
+      AI_TEXT_ENABLED: ${AI_TEXT_ENABLED}
+      AI_REASONING_EFFORT: ${AI_REASONING_EFFORT:-none}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    networks:
+      - wardrowbe-network
+      - ai-services-network
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ./wardrobe_data:/data/wardrobe
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    # ARQ publishes a heartbeat in Redis; --check tests its freshness.
+    healthcheck:
+      test: ["CMD", "arq", "--check", "app.workers.worker.WorkerSettings"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^backend-\d+\.\d+\.\d+$$
+      wud.tag.transform: ^backend-(\d+\.\d+\.\d+)$$ => $$1
+      wud.link.template: https://github.com/Anyesh/wardrowbe/releases/tag/v$${major}.$${minor}.$${patch}
+      wud.trigger.include: dockercompose.local,telegram.local
+
+  ###########################################################
+  # Wardrobe Frontend
+  ###########################################################
+  frontend:
+    image: ghcr.io/anyesh/wardrowbe:frontend-1.12.0
+    container_name: wardrobe-frontend
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://backend:8000
+      NEXTAUTH_URL: ${NEXTAUTH_URL}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      DEV_MODE: ${DEBUG}
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
+      PUID: ${PUID}
+      PGID: ${PGID}
+    ports:
+      - 127.0.0.1:3010:3000
+    networks:
+      - wardrowbe-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - 'fetch(''http://127.0.0.1:3000'').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))'
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^frontend-\d+\.\d+\.\d+$$
+      wud.tag.transform: ^frontend-(\d+\.\d+\.\d+)$$ => $$1
+      wud.link.template: https://github.com/Anyesh/wardrowbe/releases/tag/v$${major}.$${minor}.$${patch}
+      wud.trigger.include: dockercompose.local,telegram.local
+
+###########################################################
+# Shared Configuration
+###########################################################
+networks:
+  wardrowbe-network:
+    driver: bridge
+  ai-services-network:
+    external: true
+  database-admin-network:
+    external: true

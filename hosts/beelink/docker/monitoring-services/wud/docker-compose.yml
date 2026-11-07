@@ -1,0 +1,76 @@
+services:
+
+  ###########################################################
+  # WUD
+  ###########################################################
+  # Compose updates remain MANUAL; keep Docker socket and project mounts.
+  wud:
+    image: getwud/wud:9.7.0
+    container_name: wud
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ}
+      # Authentik OIDC; group-based WUD administration.
+      WUD_AUTH_OIDC_AUTHENTIK_CLIENTID: ${WUD_OIDC_CLIENT_ID}
+      WUD_AUTH_OIDC_AUTHENTIK_CLIENTSECRET: ${WUD_OIDC_CLIENT_SECRET}
+      WUD_AUTH_OIDC_AUTHENTIK_DISCOVERY: ${WUD_AUTH_OIDC_AUTHENTIK_DISCOVERY}
+      WUD_AUTH_OIDC_AUTHENTIK_REDIRECT: 'true'
+      WUD_AUTH_OIDC_AUTHENTIK_GROUPSCLAIM: groups
+      WUD_AUTH_OIDC_AUTHENTIK_ADMINGROUP: authentik Admins
+      WUD_AUTH_OIDC_AUTHENTIK_DEFAULTROLE: none
+      WUD_PUBLIC_URL: https://wud.example.com
+      # GitHub Container Registry
+      WUD_REGISTRY_GHCR_HOMELAB_USERNAME: ${GHCR_USER}
+      WUD_REGISTRY_GHCR_HOMELAB_TOKEN: ${WUD_REGISTRY_GHCR_HOMELAB_TOKEN}
+      # Docker Watcher
+      WUD_WATCHER_LOCAL_WATCHBYDEFAULT: 'true'
+      WUD_WATCHER_LOCAL_WATCHALL: 'true'
+      WUD_WATCHER_LOCAL_WATCHATSTART: 'true'
+      WUD_WATCHER_LOCAL_WATCHEVENTS: 'true'
+      # Remains manual until approved automation is separately tested.
+      WUD_TRIGGER_DOCKERCOMPOSE_LOCAL_AUTO: 'false'
+      WUD_TRIGGER_DOCKERCOMPOSE_LOCAL_BACKUP: 'true'
+      WUD_TRIGGER_DOCKERCOMPOSE_LOCAL_PRUNE: 'true'
+      WUD_TRIGGER_DOCKERCOMPOSE_LOCAL_PATHMAPPING_HOST: ${DOCKER_ROOT}
+      WUD_TRIGGER_DOCKERCOMPOSE_LOCAL_PATHMAPPING_CONTAINER: /stacks
+      # Telegram Notifications
+      WUD_TRIGGER_TELEGRAM_LOCAL_BOTTOKEN: ${WUD_TELEGRAM_BOT_TOKEN}
+      WUD_TRIGGER_TELEGRAM_LOCAL_CHATID: ${WUD_TELEGRAM_CHAT_ID}
+      WUD_TRIGGER_TELEGRAM_LOCAL_MODE: simple
+      WUD_TRIGGER_TELEGRAM_LOCAL_ONCE: 'true'
+      WUD_TRIGGER_TELEGRAM_LOCAL_THRESHOLD: all
+      WUD_TRIGGER_TELEGRAM_LOCAL_SIMPLETITLE: 'Docker Update: $${container.name}'
+      WUD_TRIGGER_TELEGRAM_LOCAL_SIMPLEBODY: "Current: $${container.updateKind.localValue}\nAvailable: $${container.updateKind.remoteValue}\n\
+        Update Type: $${container.updateKind.semverDiff || container.updateKind.kind}\n\n$${container.name === 'portainer'\
+        \ ? 'STS Release Notes: https://docs.portainer.io/sts/release-notes\\nLTS Release Notes: https://docs.portainer.io/release-notes'\
+        \ : (container.result && container.result.link ? container.result.link : '')}\n    "
+    ports:
+      - 127.0.0.1:61212:3000
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./store:/store
+      - ${DOCKER_ROOT}:/stacks
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl --fail http://localhost:3000/health || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^\d+\.\d+\.\d+$$
+      wud.link.template: https://github.com/getwud/wud/releases/tag/$${major}.$${minor}.$${patch}
+      wud.trigger.include: telegram.local

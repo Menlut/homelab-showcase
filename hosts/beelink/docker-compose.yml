@@ -1,0 +1,103 @@
+###########################################################
+# Docker Compose Reference — BeeLink SEi12
+#
+# TEMPLATE ONLY — NOT A LIVE STACK. Copy to a NEW stack
+# folder and replace the example image, ports, paths,
+# secrets, healthcheck and resource values before use.
+# Keep actual credentials in the new stack's local .env.
+###########################################################
+services:
+
+  ###########################################################
+  # Example Application
+  ###########################################################
+  example-app:
+    # Pin a tested image version. Placeholder is deliberate.
+    image: your-registry/your-app:1.2.3
+    container_name: example-app
+    restart: unless-stopped
+    init: true
+
+    #########################################################
+    # Environment
+    #########################################################
+    environment:
+      TZ: ${TZ:-America/New_York}
+      # Example of a required .env variable; uncomment when used:
+      # APP_SECRET: ${APP_SECRET:?Set APP_SECRET in .env}
+
+    #########################################################
+    # Ports — loopback-only for web apps behind local Caddy
+    #########################################################
+    ports:
+      - 127.0.0.1:${APP_PORT:-8080}:8080
+
+    #########################################################
+    # Storage — substitute the app's actual persistent path
+    #########################################################
+    volumes:
+      - ./example-data:/app/data
+
+    #########################################################
+    # Networks — use project-private network by default
+    #########################################################
+    networks:
+      - example-network
+      # Add an existing external network only when required:
+      # - ai-services-network
+
+    #########################################################
+    # Healthcheck — replace URL/tool with one the image supports
+    #########################################################
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl --fail --silent http://127.0.0.1:8080/health || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+    #########################################################
+    # Resource management — tune for the actual service
+    #########################################################
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 128M
+
+    #########################################################
+    # Logging — standard rotation used by existing stacks
+    #########################################################
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+    #########################################################
+    # WUD — monitoring only; updates remain manual
+    #########################################################
+    labels:
+      wud.watch: 'true'
+      # Add app-specific tag matching and links if needed.
+
+###########################################################
+# Shared Configuration
+###########################################################
+networks:
+  example-network:
+    driver: bridge
+  # Uncomment only if the network already exists on the host.
+  # ai-services-network:
+  #   external: true
+
+# Additional optional patterns (only when needed):
+# - A database in the same project: add a separate service,
+#   healthcheck and depends_on: condition: service_healthy.
+# - An app requiring host networking: use network_mode: host
+#   and REMOVE its ports: and networks: sections.
+# - Docker socket, /dev/dri, NET_ADMIN and /dev/net/tun:
+#   add only for applications that genuinely require them.

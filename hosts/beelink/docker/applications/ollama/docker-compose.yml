@@ -1,0 +1,52 @@
+services:
+
+  ###########################################################
+  # Ollama
+  ###########################################################
+  ollama:
+    image: ollama/ollama:0.40.15
+    container_name: ollama
+    restart: unless-stopped
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE}
+      OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS}
+      OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL}
+    ports:
+      - 127.0.0.1:11434:11434
+    networks:
+      - ai-services-network
+    volumes:
+      - ./data:/root/.ollama
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - ollama
+        - list
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^\d+\.\d+\.\d+$$
+      wud.link.template: https://github.com/ollama/ollama/releases/tag/v$${major}.$${minor}.$${patch}
+      wud.trigger.include: dockercompose.local,telegram.local
+
+###########################################################
+# Shared Configuration
+###########################################################
+networks:
+  ai-services-network:
+    external: true

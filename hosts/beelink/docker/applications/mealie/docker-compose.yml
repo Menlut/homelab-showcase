@@ -1,0 +1,111 @@
+services:
+
+  ###########################################################
+  # Mealie
+  ###########################################################
+  mealie:
+    image: ghcr.io/mealie-recipes/mealie:v3.30.0
+    container_name: mealie
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ}
+      PUID: '1000'
+      PGID: '1000'
+      BASE_URL: ${MEALIE_BASE_URL}
+      ALLOW_SIGNUP: 'false'
+      ALLOW_PASSWORD_LOGIN: 'false'
+      DEFAULT_GROUP: ${MEALIE_DEFAULT_GROUP}
+      DEFAULT_HOUSEHOLD: ${MEALIE_DEFAULT_HOUSEHOLD}
+      OIDC_AUTH_ENABLED: 'true'
+      OIDC_PROVIDER_NAME: Authentik
+      OIDC_CONFIGURATION_URL: ${MEALIE_OIDC_CONFIGURATION_URL}
+      OIDC_CLIENT_ID: ${MEALIE_OIDC_CLIENT_ID}
+      OIDC_CLIENT_SECRET: ${MEALIE_OIDC_CLIENT_SECRET}
+      OIDC_SIGNUP_ENABLED: 'true'
+      OIDC_REQUIRES_EMAIL_VERIFICATION: 'true'
+      OIDC_AUTO_REDIRECT: 'true'
+      OIDC_REMEMBER_ME: 'true'
+      DB_ENGINE: postgres
+      POSTGRES_SERVER: mealie-postgres
+      POSTGRES_PORT: '5432'
+      POSTGRES_DB: ${MEALIE_DB_NAME}
+      POSTGRES_USER: ${MEALIE_DB_USER}
+      POSTGRES_PASSWORD: ${MEALIE_DB_PASSWORD}
+    ports:
+      - 127.0.0.1:9925:9000
+    networks:
+      - mealie-network
+      - ai-services-network
+    volumes:
+      - ${MEALIE_DATA_PATH}:/app/data
+    depends_on:
+      mealie-postgres:
+        condition: service_healthy
+        restart: true
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^v\d+\.\d+\.\d+$$
+      wud.link.template: https://github.com/mealie-recipes/mealie/releases/tag/v$${major}.$${minor}.$${patch}
+      wud.trigger.include: dockercompose.local,telegram.local
+
+  ###########################################################
+  # Mealie PostgreSQL
+  ###########################################################
+  mealie-postgres:
+    image: postgres:17.11
+    container_name: mealie-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${MEALIE_DB_NAME}
+      POSTGRES_USER: ${MEALIE_DB_USER}
+      POSTGRES_PASSWORD: ${MEALIE_DB_PASSWORD}
+    networks:
+      - mealie-network
+      - database-admin-network
+    volumes:
+      - ./mealie-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${MEALIE_DB_USER} -d ${MEALIE_DB_NAME}
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^17\.\d+$$
+      wud.tag.transform: ^(\d+)\.(\d+)$$ => $$1.$$2.0
+      wud.link.template: https://www.postgresql.org/docs/release/$${major}.$${minor}/
+      wud.trigger.include: dockercompose.local,telegram.local
+
+###########################################################
+# Shared Configuration
+###########################################################
+networks:
+  mealie-network:
+    driver: bridge
+  database-admin-network:
+    external: true
+  ai-services-network:
+    external: true

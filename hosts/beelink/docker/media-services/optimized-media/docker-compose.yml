@@ -1,0 +1,128 @@
+services:
+
+  ###########################################################
+  # Radarr Optimized
+  ###########################################################
+  radarr-optimized:
+    image: linuxserver/radarr:6.4.4
+    container_name: radarr-optimized
+    restart: unless-stopped
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+    network_mode: service:media-gluetun
+    volumes:
+      - ./optimized-radarrconfig:/config
+      - ${MEDIA_PATH}:/media
+    depends_on:
+      media-gluetun:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -sS -o /dev/null --max-time 5 http://127.0.0.1:7878/ || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^\d+\.\d+\.\d+$$
+      wud.watch.digest: 'true'
+      wud.link.template: https://github.com/Radarr/Radarr/releases
+      wud.trigger.include: dockercompose.local,telegram.local
+
+  ###########################################################
+  # Sonarr Optimized
+  ###########################################################
+  sonarr-optimized:
+    image: linuxserver/sonarr:4.0.20
+    container_name: sonarr-optimized
+    restart: unless-stopped
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+    network_mode: service:media-gluetun
+    volumes:
+      - ./optimized-sonarrconfig:/config
+      - ${MEDIA_PATH}:/media
+    depends_on:
+      media-gluetun:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -sS -o /dev/null --max-time 5 http://127.0.0.1:8989/ || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^\d+\.\d+\.\d+$$
+      wud.watch.digest: 'true'
+      wud.link.template: https://github.com/Sonarr/Sonarr/releases
+      wud.trigger.include: dockercompose.local,telegram.local
+
+  ###########################################################
+  # Bazarr Optimized
+  ###########################################################
+  bazarr-optimized:
+    image: linuxserver/bazarr:1.6.1
+    container_name: bazarr-optimized
+    restart: unless-stopped
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+    network_mode: service:media-gluetun
+    volumes:
+      - ./optimized-bazarrconfig:/config
+      - ${MEDIA_PATH}:/media
+    depends_on:
+      media-gluetun:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -sS -o /dev/null --max-time 5 http://127.0.0.1:6767/ || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 1250m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^\d+\.\d+\.\d+$$
+      wud.watch.digest: 'true'
+      wud.link.template: https://github.com/morpheus65535/bazarr/releases/tag/v$${major}.$${minor}.$${patch}
+      wud.trigger.include: dockercompose.local,telegram.local
+

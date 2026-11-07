@@ -1,0 +1,102 @@
+services:
+
+  ###########################################################
+  # Beszel Hub
+  ###########################################################
+  beszel-hub:
+    image: henrygd/beszel:0.21.1
+    container_name: beszel-hub
+    restart: unless-stopped
+    environment:
+      APP_URL: https://beszel.example.com
+      DISABLE_PASSWORD_AUTH: 'true'
+      USER_CREATION: 'false'
+    ports:
+      - 127.0.0.1:61208:8090
+    volumes:
+      - ./beszel_data:/beszel_data
+      - ./beszel_socket:/beszel_socket
+    healthcheck:
+      test:
+        - CMD
+        - /beszel
+        - health
+        - --url
+        - http://localhost:8090
+      interval: 120s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^\d+\.\d+\.\d+$$
+      wud.link.template: https://github.com/henrygd/beszel/releases/tag/v$${major}.$${minor}.$${patch}
+      wud.trigger.include: dockercompose.local,telegram.local
+
+  ###########################################################
+  # Beszel Agent
+  ###########################################################
+  # Keep host networking, Docker socket, devices, and monitoring capabilities.
+  beszel-agent:
+    image: henrygd/beszel-agent-intel:0.21.1
+    container_name: beszel-agent
+    restart: unless-stopped
+    environment:
+      LISTEN: /beszel_socket/beszel.sock
+      KEY: ${BESZEL_AGENT_KEY}
+      TOKEN: ${BESZEL_AGENT_TOKEN}
+      GPU_COLLECTOR: intel_gpu_top
+      INTEL_GPU_DEVICE: drm:/dev/dri/card0
+      SMART_DEVICES: /dev/sda,/dev/nvme0
+    network_mode: host
+    # Preserve privileged Docker access and existing bind mounts.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./beszel_agent_data:/var/lib/beszel-agent
+      - ./beszel_socket:/beszel_socket
+      - /srv/storage/.beszel:/extra-filesystems/sata__SATA:ro
+    devices:
+      - /dev/dri/card0:/dev/dri/card0
+      - /dev/sda:/dev/sda
+      - /dev/nvme0:/dev/nvme0
+    cap_add:
+      - CAP_PERFMON
+      - SYS_RAWIO
+      - SYS_ADMIN
+    healthcheck:
+      test:
+        - CMD
+        - /agent
+        - health
+      interval: 120s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^\d+\.\d+\.\d+$$
+      wud.link.template: https://github.com/henrygd/beszel/releases/tag/v$${major}.$${minor}.$${patch}
+      wud.trigger.include: dockercompose.local,telegram.local
+

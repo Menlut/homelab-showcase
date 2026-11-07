@@ -1,82 +1,84 @@
-# Environment and secret files
-.env
-.env.*
-!.env.example
+# PUBLIC EXAMPLES: actual environment files and credentials must never be committed.
 **/.env
 **/.env.*
 !**/.env.example
 
-# Keys, certificates, and credential stores
-*.key
-*.pem
-*.p12
-*.pfx
-*.jks
-*.keystore
+# Secrets, certificates, local credentials.
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/*.crt
 **/.ssh/
+**/.gnupg/
+**/id_rsa
+**/id_ed25519
 **/secrets/
 
-# Logs, databases, archives, and backups
-**/logs/
-**/backups/
-**/*.log
-**/*.bak
-**/*.backup
-**/*.sql
-**/*.dump
-**/*.db
+# Runtime data, databases, generated state and archives.
 **/*.sqlite
 **/*.sqlite3
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/*-journal
+**/*.log
+**/*.tmp
+**/*.swp
+**/*.bak
+**/*.backup
+**/*.tar
+**/*.tar.gz
+**/*.tgz
+**/*.zip
+**/*.7z
+**/*.sql
+**/*.sql.gz
+**/*.dll
+**/__pycache__/
+**/*.py[cod]
+**/.cache/
+**/.DS_Store
+**/Thumbs.db
+**/backups/
+**/backup/
 
-# Infrastructure runtime data
-infrastructure-services/adguard/adguard-work/
-infrastructure-services/adguard/adguard-conf/
-infrastructure-services/caddy/caddy-data/
-infrastructure-services/caddy/caddy-config/
-infrastructure-services/homepage/homepage-config/
-infrastructure-services/homepage/homepage-icons/
-infrastructure-services/portainer/portainer-data/
-infrastructure-services/portainer/portanierdata/
+# Compose bind-mount state: retain example configurations, not their data.
+/hosts/beelink/docker/**/config/
+/hosts/beelink/docker/**/data/
+/hosts/beelink/docker/**/workspace/
+/hosts/beelink/docker/**/store/
+/hosts/beelink/docker/**/postgres_data/
+/hosts/beelink/docker/**/redis_data/
+/hosts/beelink/docker/**/wardrobe_data/
+/hosts/beelink/docker/**/beszel_data/
+/hosts/beelink/docker/**/beszel_socket/
+/hosts/beelink/docker/**/beszel_agent_data/
+/hosts/beelink/docker/**/adguard-conf/
+/hosts/beelink/docker/**/adguard-work/
+/hosts/beelink/docker/**/authentik-certs/
+/hosts/beelink/docker/**/authentik-data/
+/hosts/beelink/docker/**/authentik-postgres-data/
+/hosts/beelink/docker/**/authentik-templates/
+/hosts/beelink/docker/**/caddy-data/
+/hosts/beelink/docker/**/caddy-config/
+/hosts/beelink/docker/**/pgadmin-data/
+/hosts/beelink/docker/**/portanier-data/
+/hosts/beelink/docker/**/uptime-kuma-data/
+/hosts/beelink/docker/**/mealie-postgres-data/
+/hosts/beelink/docker/**/stirling-configs/
+/hosts/beelink/docker/**/stirling-customFiles/
+/hosts/beelink/docker/**/stirling-logs/
+/hosts/beelink/docker/**/stirling-tessdata/
+/hosts/beelink/docker/**/jellyfincache/
+/hosts/beelink/docker/**/jellyfinconfig/
+/hosts/beelink/docker/**/seerrconfig/
+/hosts/beelink/docker/**/*config/
+/hosts/beelink/docker/**/*data/
 
-# Monitoring runtime data
-monitoring-services/beszel/beszel_data/
-monitoring-services/beszel/beszel_agent_data/
-monitoring-services/uptime-kuma/uptime-kuma-data/
-
-# Media runtime data
-media-services/arr-stack/arr-gluetundata/
-media-services/arr-stack/arr-qbittorrentconfig/
-media-services/arr-stack/prowlarrconfig/
-media-services/arr-stack/sonarrconfig/
-media-services/arr-stack/radarrconfig/
-media-services/arr-stack/bazarrconfig/
-media-services/arr-fileflows/config/
-media-services/arr-fileflows/temp/
-media-services/player-seer/jellyconfig/
-media-services/player-seer/jellycache/
-media-services/player-seer/seerrconfig/
-
-# Development runtime data and SSH material
-development-services/open-vscode-server/openvscode-ssh/
-development-services/open-vscode-server/openvscode-data/
-development-services/open-vscode-server/workspace/
-
-# AI runtime data
-ai-services/ollama/data/
-
-# Application runtime data
-application-services/mealie/mealie-postgres-data/
-application-services/wardrowbe/postgres_data/
-application-services/wardrowbe/redis_data/
-application-services/wardrowbe/wardrobe_data/
-
-# Game-server runtime data
-game-servers/valheim-server/valheim_config/
-game-servers/project-zomboid-server/server-files/
-game-servers/project-zomboid-server/server-data/
-
-# Common editor / operating-system files
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
+# Additional credential stores, database exports and local IDE metadata.
+**/*.jks
+**/*.keystore
+**/*.dump
+**/.vscode/
+**/.idea/

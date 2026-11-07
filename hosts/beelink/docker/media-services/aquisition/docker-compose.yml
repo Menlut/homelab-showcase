@@ -1,0 +1,216 @@
+services:
+
+  ###########################################################
+  # Shared Gluetun VPN
+  ###########################################################
+  # Shared network namespace is deliberate; dependent apps publish ports here.
+  media-gluetun:
+    image: qmcgaw/gluetun:v3.41.3
+    container_name: media-gluetun
+    restart: unless-stopped
+    environment:
+      VPN_SERVICE_PROVIDER: protonvpn
+      VPN_TYPE: wireguard
+      WIREGUARD_PRIVATE_KEY: ${WIREGUARD_KEY}
+      VPN_PORT_FORWARDING: 'on'
+      VPN_PORT_FORWARDING_PROVIDER: protonvpn
+      SERVER_COUNTRIES: ${VPN_SERVER_COUNTRIES}
+      TZ: ${TZ}
+      FIREWALL_INPUT_PORTS: 8080,9696,7878,7879,8989,8990,6767,6768,3000
+      HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE: '{"auth":"none"}'
+    # Ports for all apps sharing this VPN namespace.
+    ports:
+      - 127.0.0.1:${QBT_WEB_PORT}:8080/tcp
+      - 127.0.0.1:${PROWLARR_WEB_PORT}:9696/tcp
+      - 127.0.0.1:${RADARR_OPT_WEB_PORT}:7878/tcp
+      - 127.0.0.1:${RADARR_4K_WEB_PORT}:7879/tcp
+      - 127.0.0.1:${SONARR_OPT_WEB_PORT}:8989/tcp
+      - 127.0.0.1:${SONARR_4K_WEB_PORT}:8990/tcp
+      - 127.0.0.1:${BAZARR_OPT_WEB_PORT}:6767/tcp
+      - 127.0.0.1:${BAZARR_4K_WEB_PORT}:6768/tcp
+      - 127.0.0.1:${GLUETUN_WEBUI_PORT}:3000/tcp
+    volumes:
+      - ./media-gluetundata:/gluetun
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    healthcheck:
+      test:
+        - CMD
+        - /gluetun-entrypoint
+        - healthcheck
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^v\d+\.\d+\.\d+$$
+      wud.link.template: https://github.com/passteque/gluetun/releases/tag/v$${major}.$${minor}.$${patch}
+      wud.trigger.include: dockercompose.local,telegram.local
+
+  ###########################################################
+  # Gluetun Web UI
+  ###########################################################
+  media-gluetun-webui:
+    image: scuzza/gluetun-webui:main
+    container_name: media-gluetun-webui
+    restart: unless-stopped
+    environment:
+      GLUETUN_CONTROL_URL: http://127.0.0.1:8000
+      TRUST_PROXY: 'true'
+    network_mode: service:media-gluetun
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    depends_on:
+      media-gluetun:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^main$$
+      wud.watch.digest: 'true'
+      wud.link.template: https://github.com/Sir-Scuzza/gluetun-webui/commits/main
+      wud.trigger.include: dockercompose.local,telegram.local
+
+  ###########################################################
+  # qBittorrent
+  ###########################################################
+  media-qbittorrent:
+    image: linuxserver/qbittorrent:5.2.3
+    container_name: media-qbittorrent
+    restart: unless-stopped
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+      WEBUI_PORT: '8080'
+    network_mode: service:media-gluetun
+    volumes:
+      - ./media-qbittorrentconfig:/config
+      - ${MEDIA_PATH}:/media
+    depends_on:
+      media-gluetun:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -sS -o /dev/null --max-time 5 http://127.0.0.1:8080/ || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^\d+\.\d+\.\d+$$
+      wud.watch.digest: 'true'
+      wud.link.template: https://github.com/qbittorrent/qBittorrent/releases/tag/release-$${major}.$${minor}.$${patch}
+      wud.trigger.include: dockercompose.local,telegram.local
+
+  ###########################################################
+  # qBittorrent Port Sync
+  ###########################################################
+  media-qbittorrent-port-sync:
+    image: mjmeli/qbittorrent-port-forward-gluetun-server:2025.12.21.02
+    container_name: media-qbittorrent-port-sync
+    restart: unless-stopped
+    environment:
+      QBT_USERNAME: ${QBT_USER}
+      QBT_PASSWORD: ${QBT_PASS}
+      QBT_ADDR: http://127.0.0.1:8080
+      GTN_ADDR: http://127.0.0.1:8000
+    network_mode: service:media-gluetun
+    depends_on:
+      media-gluetun:
+        condition: service_healthy
+      media-qbittorrent:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^\d{4}\.\d{2}\.\d{2}\.\d{2}$$
+      wud.tag.transform: ^(\d{4})\.(\d{2})\.(\d{2})\.(\d{2})$$ => $$1.$$2.$$3-r$$4
+      wud.link.template: https://github.com/mjmeli/qbittorrent-port-forward-gluetun-server/releases/tag/$${original}
+      wud.trigger.include: dockercompose.local,telegram.local
+
+  ###########################################################
+  # Prowlarr
+  ###########################################################
+  prowlarr:
+    image: linuxserver/prowlarr:2.6.5
+    container_name: prowlarr
+    restart: unless-stopped
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+    network_mode: service:media-gluetun
+    volumes:
+      - ./prowlarrconfig:/config
+    depends_on:
+      media-gluetun:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -fsS http://127.0.0.1:9696/ping >/dev/null || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^\d+\.\d+\.\d+$$
+      wud.watch.digest: 'true'
+      wud.link.template: https://github.com/Prowlarr/Prowlarr/releases
+      wud.trigger.include: dockercompose.local,telegram.local
+

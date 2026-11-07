@@ -1,0 +1,59 @@
+# PUBLIC EXAMPLE ONLY — replace example.com and example ranges before deployment.
+# Caddy must be built with the Cloudflare DNS plugin.
+{
+    acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+}
+
+# Example client access: LAN subnet + all Tailscale IPv4 clients.
+# 100.64.0.0/10 is the client subnet, not the example host IP (100.101.102.103).
+(private_clients) {
+    @private remote_ip 192.168.50.0/24 100.64.0.0/10
+}
+
+# Native SSO: the application itself authenticates with Authentik.
+(native_sso) {
+    import private_clients
+    handle @private { reverse_proxy {args[0]} }
+    handle { respond "Forbidden" 403 }
+}
+
+# Forward auth: Caddy delegates authentication to the Authentik outpost.
+(forward_auth) {
+    import private_clients
+    handle @private {
+        route {
+            reverse_proxy /outpost.goauthentik.io/* 127.0.0.1:9099
+            forward_auth 127.0.0.1:9099 {
+                uri /outpost.goauthentik.io/auth/caddy
+                copy_headers X-Authentik-Username X-Authentik-Groups X-Authentik-Email X-Authentik-Name X-Authentik-Uid
+            }
+            reverse_proxy {args[0]}
+        }
+    }
+    handle { respond "Forbidden" 403 }
+}
+
+# Own-login apps, e.g., clients incompatible with browser SSO redirects.
+(private_access) {
+    import private_clients
+    handle @private { reverse_proxy {args[0]} }
+    handle { respond "Forbidden" 403 }
+}
+
+# Authentik itself: Docker containers also need the SSO endpoint.
+auth.example.com {
+    @trusted remote_ip 192.168.50.0/24 100.64.0.0/10 10.240.0.0/16
+    handle @trusted { reverse_proxy 127.0.0.1:9099 }
+    handle { respond "Forbidden" 403 }
+}
+
+# Representative routes, not the complete private deployment.
+mealie.example.com {
+    import native_sso 127.0.0.1:9925
+}
+adguard.example.com {
+    import forward_auth 127.0.0.1:3000
+}
+jellyfin.example.com {
+    import private_access 127.0.0.1:8096
+}

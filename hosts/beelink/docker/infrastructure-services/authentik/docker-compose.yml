@@ -1,0 +1,160 @@
+services:
+
+  ###########################################################
+  # Authentik Server
+  ###########################################################
+  # Caddy connects to localhost:9099; no separate SSO Docker bridge is required.
+  authentik-server:
+    image: ghcr.io/goauthentik/server:2026.8.5
+    container_name: authentik-server
+    restart: unless-stopped
+    command: server
+    environment:
+      TZ: ${TZ}
+      # Keep the original secret key and PostgreSQL credentials.
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY}
+      AUTHENTIK_ERROR_REPORTING__ENABLED: 'false'
+      AUTHENTIK_POSTGRESQL__HOST: authentik-postgres
+      AUTHENTIK_POSTGRESQL__PORT: '5432'
+      AUTHENTIK_POSTGRESQL__NAME: ${AUTHENTIK_DB_NAME}
+      AUTHENTIK_POSTGRESQL__USER: ${AUTHENTIK_DB_USER}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_DB_PASSWORD}
+    ports:
+      - 127.0.0.1:9099:9000
+    networks:
+      - authentik-network
+    volumes:
+      - ./authentik-data:/data
+      - ./authentik-templates:/templates
+      - ./authentik-certs:/certs
+    depends_on:
+      authentik-postgres:
+        condition: service_healthy
+        restart: true
+    healthcheck:
+      test:
+        - CMD
+        - ak
+        - healthcheck
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^\d{4}\.\d+\.\d+$$
+      wud.link.template: https://github.com/goauthentik/authentik/releases/tag/version/$${major}.$${minor}.$${patch}
+      wud.trigger.include: dockercompose.local,telegram.local
+
+  ###########################################################
+  # Authentik Worker
+  ###########################################################
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:2026.8.5
+    container_name: authentik-worker
+    restart: unless-stopped
+    command: worker
+    environment:
+      TZ: ${TZ}
+      # Keep the original secret key and PostgreSQL credentials.
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY}
+      AUTHENTIK_ERROR_REPORTING__ENABLED: 'false'
+      AUTHENTIK_POSTGRESQL__HOST: authentik-postgres
+      AUTHENTIK_POSTGRESQL__PORT: '5432'
+      AUTHENTIK_POSTGRESQL__NAME: ${AUTHENTIK_DB_NAME}
+      AUTHENTIK_POSTGRESQL__USER: ${AUTHENTIK_DB_USER}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_DB_PASSWORD}
+    networks:
+      - authentik-network
+    volumes:
+      - ./authentik-data:/data
+      - ./authentik-templates:/templates
+      - ./authentik-certs:/certs
+    depends_on:
+      authentik-postgres:
+        condition: service_healthy
+        restart: true
+    healthcheck:
+      test:
+        - CMD
+        - ak
+        - healthcheck
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^\d{4}\.\d+\.\d+$$
+      wud.link.template: https://github.com/goauthentik/authentik/releases/tag/version/$${major}.$${minor}.$${patch}
+      wud.trigger.include: dockercompose.local,telegram.local
+
+  ###########################################################
+  # Authentik PostgreSQL
+  ###########################################################
+  # Retain the shared database-admin network so pgAdmin can reach PostgreSQL.
+  authentik-postgres:
+    image: postgres:17.11
+    container_name: authentik-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${AUTHENTIK_DB_NAME}
+      POSTGRES_USER: ${AUTHENTIK_DB_USER}
+      POSTGRES_PASSWORD: ${AUTHENTIK_DB_PASSWORD}
+    networks:
+      - authentik-network
+      - database-admin-network
+    volumes:
+      - ./authentik-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      wud.watch: 'true'
+      wud.tag.include: ^17\.\d+$$
+      wud.tag.transform: ^(\d+)\.(\d+)$$ => $$1.$$2.0
+      wud.link.template: https://www.postgresql.org/docs/release/$${major}.$${minor}/
+      wud.trigger.include: dockercompose.local,telegram.local
+
+###########################################################
+# Shared Configuration
+###########################################################
+networks:
+  authentik-network:
+    driver: bridge
+  database-admin-network:
+    external: true
